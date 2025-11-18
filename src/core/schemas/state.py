@@ -1,14 +1,13 @@
 from pydantic import BaseModel, Field
-from typing import Annotated, List, Optional
+from typing import List, Optional
 from langchain_core.messages import BaseMessage
-from langgraph.graph import add_messages
+from uuid import uuid4
 
 
 class ChatState(BaseModel):
     topic: str = Field(..., description="The topic provided by a user's input")
     debators: List[str]
-    history: Annotated[List[BaseMessage], add_messages] = []
-    recent_history: List[BaseMessage] = []
+    session_id: str
     history_patch: Optional[BaseMessage] = None
     last_speaker: str = None
     next_speaker:str = None
