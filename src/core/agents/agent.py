@@ -1,15 +1,12 @@
-from typing import Annotated, List
 from langchain_groq.chat_models import ChatGroq
-from langchain_ollama.chat_models import ChatOllama
-from langgraph.graph import StateGraph, END, START
-from langgraph.graph.message import add_messages
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 import os
 from src.utils.logger import logger
 from src.utils.loaders import load_yaml
 from src.core.schemas.state import ChatState
+from src.core.memory_client import memory_client
 from abc import abstractmethod, ABC
 load_dotenv()
 
@@ -20,11 +17,12 @@ API_KEY = os.getenv("GROQ_API_KEY")
 
 
 class BaseAgent(ABC):
-    def __init__(self, name:str, model:str="llama-3.1-8b-instant"):
+    def __init__(self, name:str, model:str="llama-3.1-8b-instant", max_tokens:int=300):
         self.name = name.strip().lower()
+        self.memory = memory_client
         self.llm = ChatGroq(model=model,
                             api_key=API_KEY,
-                            max_tokens=1024)
+                            max_tokens=max_tokens)
         self.prompt = ChatPromptTemplate.from_template(load_yaml(prompts_path)[self.name]["system_prompt"])
         self.chain = self.prompt | self.llm
 
@@ -37,15 +35,28 @@ class Persona(BaseAgent):
     
     async def run(self, state:ChatState):
         logger.info(f"{self.name} called to the debates")
+        memories = await self.memory.search(
+            query=f"Give me most relatable and recent arguments on {state.topic}",
+            user_id=state.session_id,
+            limit=5
+        )
+        context = "\n".join(memories) if memories else "No history yet"
         response: AIMessage = await self.chain.ainvoke({
             "topic": state.topic,
-            "history": state.history,
-            "recent_history": state.recent_history
+            "context": context
         })
         logger.info(f"{self.name} generated a response")
+        await self.memory.add(
+            messages=[{"role": "user",
+                       "content":f"{self.name} said:{response.content}"}],
+            user_id=state.session_id,
+
+        )
         response = AIMessage(f"{self.name} said: {response.content}")
         return {
-            "history_patch": response
+            "history_patch": response,
+            "last_speaker": self.name,
+            "replices_counter": state.replices_counter + 1
         }
     
 class Orchestrator(BaseAgent):
@@ -55,10 +66,15 @@ class Orchestrator(BaseAgent):
         if state.replices_counter == 10:
             logger.warning(f"Turn limit ({state.replices_counter}) reached. Forcing FINISH.")
             return {"next_speaker": "finish"}
+        memories = await self.memory.search(
+            query="The current state of the debate and arguments", 
+            user_id=state.session_id,
+            limit=5
+        )
+        context = "\n".join(memories)
         response: AIMessage = await self.chain.ainvoke({
             "debators": state.debators,
-            "history": state.history,
-            "recent_history": state.recent_history,
+            "context": context,
             "last_speaker": state.last_speaker
         })
         logger.info(f"{self.name} generated a response")
@@ -74,39 +90,22 @@ class Orchestrator(BaseAgent):
             "next_speaker": cleaned_response
         }
 
-class HistoryManager(BaseAgent):
-
-    def __init__(self, name:str, history_size:int, model:str="openai/gpt-oss-120b"):
-        super().__init__(name, model)
-        self.history_size = history_size
-
-    async def run(self, state: ChatState):
-        logger.info(f"{self.name} called to manage history")
-        
-        new_message = state.history_patch
-        if not new_message:
-            return {}
-
-        current_window = state.recent_history
-
-        new_window = current_window + [new_message]
-
-        if len(new_window) > self.history_size:
-            new_window = new_window[-self.history_size:]
-        
-        return {
-            "history": [new_message], 
-            "recent_history": new_window, 
-            "history_patch": None,
-            "replices_counter": state.replices_counter + 1
-        }
 
 class Judge(BaseAgent):
 
+    def __init__(self, name:str, model:str="llama-3.1-8b-instant", max_tokens:int=500):
+        super().__init__(name, model, max_tokens)
+
     async def run(self, state:ChatState):
         logger.info(f"{self.name} called to the debates")
+        memories = await self.memory.search(
+            query=f"Summary of arguments for {state.topic}", 
+            user_id=state.session_id,
+            limit=20
+        )
+        context = "\n".join(memories)
         response: AIMessage = await self.chain.ainvoke({
-            "history": state.history
+            "context": context
         })
         logger.info(f"{self.name} generated a response")
         return {
