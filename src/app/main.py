@@ -12,6 +12,7 @@ from src.utils.logger import logger
 from src.utils.loaders import load_yaml
 from src.core.agents.orchestration import GraphFactory
 from src.core.schemas.state import ChatState
+from uuid import uuid4
 
 load_dotenv()
 
@@ -37,12 +38,13 @@ async def cmd_start(message: types.Message, state:FSMContext):
     app = graph.build_graph()
     initial_state = ChatState(
         topic=topic,
-        debators=agents_list
+        debators=agents_list,
+        session_id=str(uuid4())
         )
 
     async for event in app.astream(initial_state, config={"recursion_limit": 100}):
         node_name, patch = list(event.items())[0]
-        if node_name == "Orchestrator" or node_name == "HistoryManager":
+        if node_name == "Orchestrator":
             continue
 
         if "history_patch" in patch and patch["history_patch"]:
@@ -60,6 +62,7 @@ async def cmd_start(message: types.Message, state:FSMContext):
             judge_decision = patch["judge_decision"]
 
             await message.answer(f"**Judges Verdict:**\n{judge_decision.content}")
+        await asyncio.sleep(2)
 
 @dp.message(Command("preset"))
 async def cmd_preset(message: types.Message):
