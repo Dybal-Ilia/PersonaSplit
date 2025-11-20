@@ -8,6 +8,8 @@ from src.utils.loaders import load_yaml
 from src.core.schemas.state import ChatState
 from src.core.memory_client import memory_client
 from abc import abstractmethod, ABC
+from httpx import HTTPStatusError
+import asyncio
 load_dotenv()
 
 prompts_path = os.getenv("PROMPTS_PATH")
@@ -35,12 +37,22 @@ class Persona(BaseAgent):
     
     async def run(self, state:ChatState):
         logger.info(f"{self.name} called to the debates")
-        memories = await self.memory.search(
-            query=f"Give me most relatable and recent arguments on {state.topic}",
-            user_id=state.session_id,
-            limit=5
-        )
-        context = "\n".join(memories) if memories else "No history yet"
+        try:
+            memories = await self.memory.search(
+                query=state.topic, 
+                filters={"user_id":state.session_id},
+                limit=5
+            )
+            context = "\\n".join(memory["memory"] for memory in memories["results"])
+            if not context:
+                context=state.history_patch.content
+        except HTTPStatusError as e:
+            if e.response.status_code == 400:
+                logger.warning(f"Mem0 Search returned 400 (Likely no history yet). response: {e.response.text}")
+                context = "No history yet."
+            else:
+                raise e
+        logger.info(f"Context for {self.name}:\n{context}")
         response: AIMessage = await self.chain.ainvoke({
             "topic": state.topic,
             "context": context
@@ -48,10 +60,11 @@ class Persona(BaseAgent):
         logger.info(f"{self.name} generated a response")
         await self.memory.add(
             messages=[{"role": "user",
-                       "content":f"{self.name} said:{response.content}"}],
+                       "content":f"{self.name} says: {response.content}"}],
             user_id=state.session_id,
 
         )
+        await asyncio.sleep(5)
         response = AIMessage(f"{self.name} said: {response.content}")
         return {
             "history_patch": response,
@@ -66,12 +79,22 @@ class Orchestrator(BaseAgent):
         if state.replices_counter == 10:
             logger.warning(f"Turn limit ({state.replices_counter}) reached. Forcing FINISH.")
             return {"next_speaker": "finish"}
-        memories = await self.memory.search(
-            query="The current state of the debate and arguments", 
-            user_id=state.session_id,
-            limit=5
-        )
-        context = "\n".join(memories)
+        try:
+            memories = await self.memory.search(
+                query=state.topic, 
+                filters={"user_id":state.session_id},
+                limit=5
+            )
+            context = "\\n".join(memory["memory"] for memory in memories["results"])
+            if not context:
+                context=state.history_patch.content
+        except HTTPStatusError as e:
+            if e.response.status_code == 400:
+                logger.warning(f"Mem0 Search returned 400 (Likely no history yet). response: {e.response.text}")
+                context = "No history yet."
+            else:
+                raise e
+        logger.info(f"Context for {self.name}:\n{context}")
         response: AIMessage = await self.chain.ainvoke({
             "debators": state.debators,
             "context": context,
@@ -98,12 +121,20 @@ class Judge(BaseAgent):
 
     async def run(self, state:ChatState):
         logger.info(f"{self.name} called to the debates")
-        memories = await self.memory.search(
-            query=f"Summary of arguments for {state.topic}", 
-            user_id=state.session_id,
-            limit=20
-        )
-        context = "\n".join(memories)
+        try:
+            memories = await self.memory.search(
+                query=state.topic, 
+                filters={"user_id":state.session_id},
+                limit=20
+            )
+            context = "\\n".join(memory["memory"] for memory in memories["results"])
+        except HTTPStatusError as e:
+            if e.response.status_code == 400:
+                logger.warning(f"Mem0 Search returned 400 (Likely no history yet). response: {e.response.text}")
+                context = "No history yet."
+            else:
+                raise e
+        logger.info(f"Context for {self.name}:\n{context}")
         response: AIMessage = await self.chain.ainvoke({
             "context": context
         })
