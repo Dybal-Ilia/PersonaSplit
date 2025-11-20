@@ -62,7 +62,7 @@ async def cmd_start(message: types.Message, state:FSMContext):
             judge_decision = patch["judge_decision"]
 
             await message.answer(f"**Judges Verdict:**\n{judge_decision.content}")
-        await asyncio.sleep(2)
+
 
 @dp.message(Command("preset"))
 async def cmd_preset(message: types.Message):
