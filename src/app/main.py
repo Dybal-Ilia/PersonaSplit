@@ -27,12 +27,12 @@ TELEGRAM_MAX_LENGTH = 4096
 async def cmd_start(message: types.Message, state:FSMContext):
     topic = message.text.split(maxsplit=1)[-1]
     user_data = await state.get_data()
-    preset = user_data.get("selected_preset", "classic")
+    preset = user_data.get("selected_preset", "classic_preset")
     try:
         agents_list = presets[preset]["agents"]
     except KeyError:
         await message.answer("An error occurred. Preset is not found. Switching to 'classic'.")
-        agents_list = presets["classic"]["agents"]
+        agents_list = presets["classic_preset"]["agents"]
     await message.answer(f"Got You! (Preset: {preset})\nPreparing Debators...")
     graph = GraphFactory(agents_list=agents_list)
     app = graph.build_graph()
@@ -45,19 +45,16 @@ async def cmd_start(message: types.Message, state:FSMContext):
     async for event in app.astream(initial_state, config={"recursion_limit": 100}):
         node_name, patch = list(event.items())[0]
         if node_name == "Orchestrator":
-            continue
+            response_message = patch["next_speaker"]
+            await message.answer(f"{response_message} is now to speak")
 
         if "history_patch" in patch and patch["history_patch"]:
             await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
             response_message = patch["history_patch"]
             persona_name = node_name.capitalize()
             full_text = f"**{persona_name}**\n{response_message.content.split(':', maxsplit=1)[-1]}"
-            if len(full_text) <= TELEGRAM_MAX_LENGTH:
-                await message.answer(full_text)
-            else:
-                for i in range(0, len(full_text), TELEGRAM_MAX_LENGTH):
-                    chunk = full_text[i : i + TELEGRAM_MAX_LENGTH]
-                    await message.answer(chunk)
+            await message.answer(full_text)
+
         elif node_name == "Judge":
             judge_decision = patch["judge_decision"]
 
@@ -81,7 +78,7 @@ async def preset_chosen(message: types.Message, state:FSMContext):
     await state.update_data(selected_preset=chosen)
 
     await message.answer(
-        f"Chosen preset is {chosen}\nThe debators are: {", ".join(presets[chosen]["agents"])}",
+        f"Chosen preset is {chosen}\n\nThe debators are: {", ".join(presets[chosen]["agents"])}",
         reply_markup=ReplyKeyboardRemove()
     )
 
