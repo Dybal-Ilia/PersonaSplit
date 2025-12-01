@@ -22,7 +22,7 @@ class GraphFactory:
             graph.add_node(agent_name, agent.run)
             graph.add_edge(agent_name, "Orchestrator")
         conditional_map = {name: name for name in self.agents_list}
-        conditional_map["finish"] = "Judge"
+        conditional_map["judge"] = "Judge"
         graph.add_conditional_edges(
             source="Orchestrator",
             path=self.route_debates,
@@ -37,13 +37,13 @@ class GraphFactory:
         next_speaker = state.next_speaker
         debators = state.debators
 
-        if next_speaker == "finish":
-            return "finish"
+        if next_speaker == "judge":
+            return "judge"
         
         if next_speaker in debators:
             return next_speaker
         
-        return "finish"
+        return "judge"
 
 
 
