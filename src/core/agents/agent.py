@@ -19,7 +19,7 @@ API_KEY = os.getenv("GROQ_API_KEY")
 
 
 class BaseAgent(ABC):
-    def __init__(self, name:str, model:str="llama-3.1-8b-instant", max_tokens:int=300):
+    def __init__(self, name:str, model:str="openai/gpt-oss-20b", max_tokens:int=300):
         self.name = name.strip().lower()
         self.memory = memory_client
         self.llm = ChatGroq(model=model,
@@ -38,33 +38,26 @@ class Persona(BaseAgent):
     async def run(self, state:ChatState):
         logger.info(f"{self.name} called to the debates")
         try:
-            memories = await self.memory.search(
+            memories = self.memory.search(
                 query=state.topic, 
-                filters={"user_id":state.session_id},
+                user_id=state.session_id,
                 limit=5
             )
-            context = "\\n".join(memory["memory"] for memory in memories["results"])
-            if not context:
-                context=state.history_patch.content
-        except HTTPStatusError as e:
-            if e.response.status_code == 400:
-                logger.warning(f"Mem0 Search returned 400 (Likely no history yet). response: {e.response.text}")
-                context = "No history yet."
-            else:
-                raise e
+            context = "\\n".join(memories) or state.history_patch.content
+        except Exception as e:
+            logger.warning(f"Memory search failed: {e}")
+            context = "No history yet."
         logger.info(f"Context for {self.name}:\n{context}")
         response: AIMessage = await self.chain.ainvoke({
             "topic": state.topic,
             "context": context
         })
         logger.info(f"{self.name} generated a response")
-        await self.memory.add(
-            messages=[{"role": "user",
-                       "content":f"{self.name} says: {response.content}"}],
-            user_id=state.session_id,
-
-        )
-        await asyncio.sleep(5)
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            memory_client.add,
+            {"messages":[{"role":"user","content":f"{self.name} says: {response.content}"}],
+             "user_id":state.session_id})
         response = AIMessage(f"{self.name} said: {response.content}")
         return {
             "history_patch": response,
@@ -78,22 +71,17 @@ class Orchestrator(BaseAgent):
         logger.info(f"{self.name} called to the debates")
         if state.replices_counter == 10:
             logger.warning(f"Turn limit ({state.replices_counter}) reached. Forcing FINISH.")
-            return {"next_speaker": "finish"}
+            return {"next_speaker": "judge"}
         try:
-            memories = await self.memory.search(
+            memories = self.memory.search(
                 query=state.topic, 
-                filters={"user_id":state.session_id},
+                user_id=state.session_id,
                 limit=5
             )
-            context = "\\n".join(memory["memory"] for memory in memories["results"])
-            if not context:
-                context=state.history_patch.content
-        except HTTPStatusError as e:
-            if e.response.status_code == 400:
-                logger.warning(f"Mem0 Search returned 400 (Likely no history yet). response: {e.response.text}")
-                context = "No history yet."
-            else:
-                raise e
+            context = "\\n".join(memories) or state.history_patch.content
+        except Exception as e:
+            logger.warning(f"Memory search failed: {e}")
+            context = "No history yet."
         logger.info(f"Context for {self.name}:\n{context}")
         response: AIMessage = await self.chain.ainvoke({
             "debators": state.debators,
@@ -103,7 +91,7 @@ class Orchestrator(BaseAgent):
         logger.info(f"{self.name} generated a response")
         cleaned_response = response.content.strip().lower()
         options = [debator for debator in state.debators if debator != state.last_speaker]
-        valid_options = options + ["finish"]
+        valid_options = options + ["judge"]
         if cleaned_response not in valid_options:
             return {
                 "next_speaker": valid_options[0]
@@ -116,24 +104,21 @@ class Orchestrator(BaseAgent):
 
 class Judge(BaseAgent):
 
-    def __init__(self, name:str, model:str="llama-3.1-8b-instant", max_tokens:int=500):
+    def __init__(self, name:str, model:str="openai/gpt-oss-20b", max_tokens:int=500):
         super().__init__(name, model, max_tokens)
 
     async def run(self, state:ChatState):
         logger.info(f"{self.name} called to the debates")
         try:
-            memories = await self.memory.search(
+            memories = self.memory.search(
                 query=state.topic, 
-                filters={"user_id":state.session_id},
+                user_id=state.session_id,
                 limit=20
             )
-            context = "\\n".join(memory["memory"] for memory in memories["results"])
-        except HTTPStatusError as e:
-            if e.response.status_code == 400:
-                logger.warning(f"Mem0 Search returned 400 (Likely no history yet). response: {e.response.text}")
-                context = "No history yet."
-            else:
-                raise e
+            context = "\\n".join(memories) or state.history_patch.content
+        except Exception as e:
+            logger.warning(f"Memory search failed: {e}")
+            context = "No history yet."
         logger.info(f"Context for {self.name}:\n{context}")
         response: AIMessage = await self.chain.ainvoke({
             "context": context
