@@ -19,7 +19,7 @@ API_KEY = os.getenv("GROQ_API_KEY")
 
 
 class BaseAgent(ABC):
-    def __init__(self, name:str, model:str="openai/gpt-oss-20b", max_tokens:int=300):
+    def __init__(self, name:str, model:str="llama-3.3-70b-versatile", max_tokens:int=300):
         self.name = name.strip().lower()
         self.memory = memory_client
         self.llm = ChatGroq(model=model,
@@ -104,7 +104,7 @@ class Orchestrator(BaseAgent):
 
 class Judge(BaseAgent):
 
-    def __init__(self, name:str, model:str="openai/gpt-oss-20b", max_tokens:int=500):
+    def __init__(self, name:str, model:str="llama-3.3-70b-versatile", max_tokens:int=500):
         super().__init__(name, model, max_tokens)
 
     async def run(self, state:ChatState):
