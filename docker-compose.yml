@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  bot:
+    build: .
+    image: personasplit-bot:latest
+    env_file:
+      - .env
+    environment:
+      PROMPTS_PATH: /app/src/core/prompts/prompts.yaml
+    restart: unless-stopped
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+volumes:
+  hf_cache:
