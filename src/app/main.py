@@ -3,8 +3,7 @@ from dotenv import load_dotenv
 from os import getenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters.command import Command
-from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from aiogram.types import ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ChatAction
@@ -21,34 +20,34 @@ PRESETS_PATH = getenv('PRESETS_PATH')
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 presets = load_yaml(PRESETS_PATH)
-TELEGRAM_MAX_LENGTH = 4096
 
-@dp.message(Command("debate"))
-async def cmd_start(message: types.Message, state:FSMContext):
-    topic = message.text.split(maxsplit=1)[-1]
+
+async def _start_debate(message: types.Message, topic: str, preset: str | None, state: FSMContext):
     user_data = await state.get_data()
-    preset = user_data.get("selected_preset", "classic_preset")
+    chosen_preset = preset or user_data.get("selected_preset", "classic_preset")
     try:
-        agents_list = presets[preset]["agents"]
-    except KeyError:
+        agents_list = presets[chosen_preset]["agents"]
+    except Exception:
         await message.answer("An error occurred. Preset is not found. Switching to 'classic'.")
-        agents_list = presets["classic_preset"]["agents"]
-    await message.answer(f"Got You! (Preset: {preset})\nPreparing Debators...")
+        chosen_preset = "classic_preset"
+        agents_list = presets[chosen_preset]["agents"]
+
     graph = GraphFactory(agents_list=agents_list)
     app = graph.build_graph()
     initial_state = ChatState(
         topic=topic,
         debators=agents_list,
         session_id=str(uuid4())
-        )
+    )
 
     async for event in app.astream(initial_state, config={"recursion_limit": 100}):
         node_name, patch = list(event.items())[0]
         if node_name == "Orchestrator":
-            response_message = patch["next_speaker"]
-            await message.answer(f"{response_message} is now to speak")
+            response_message = patch.get("next_speaker")
+            if response_message:
+                await message.answer(f"{response_message} is now to speak")
 
-        if "history_patch" in patch and patch["history_patch"]:
+        if patch.get("history_patch"):
             await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
             response_message = patch["history_patch"]
             persona_name = node_name.capitalize()
@@ -56,31 +55,68 @@ async def cmd_start(message: types.Message, state:FSMContext):
             await message.answer(full_text)
 
         elif node_name == "Judge":
-            judge_decision = patch["judge_decision"]
+            judge_decision = patch.get("judge_decision")
+            if judge_decision:
+                await message.answer(f"**Judges Verdict:**\n{judge_decision.content}")
 
-            await message.answer(f"**Judges Verdict:**\n{judge_decision.content}")
+@dp.message(Command("debate"))
+async def cmd_debate(message: types.Message, state: FSMContext):
+    # Backward compatibility: /debate <topic>
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Usage: /debate <topic>")
+        return
+    topic = parts[1].strip()
+    data = await state.get_data()
+    preset = data.get("selected_preset")
+    await _start_debate(message, topic, preset, state)
 
 
-@dp.message(Command("preset"))
-async def cmd_preset(message: types.Message):
+@dp.message()
+async def topic_or_other(message: types.Message, state: FSMContext):
+    if not message.text:
+        return
+    if message.text.startswith('/'):
+        return
 
-    presets = load_yaml(path=PRESETS_PATH)
-    builder = ReplyKeyboardBuilder()
-    for preset in presets.keys():
-        builder.button(text=preset, callback_data=preset)
-    builder.adjust(4)
-    await message.answer("Choose one of available presets below",
-                         reply_markup=builder.as_markup(resize_keyboard=True))
+    text = message.text.strip()
 
-@dp.message(F.text.in_(presets.keys()))
-async def preset_chosen(message: types.Message, state:FSMContext):
-    chosen = message.text
-    await state.update_data(selected_preset=chosen)
+    # If user typed a preset name (legacy reply keyboard), store and confirm
+    if text in presets:
+        await state.update_data(selected_preset=text)
+        await message.answer(
+            f"Chosen preset is {text}\n\nThe debaters are: {', '.join(presets[text]['agents'])}",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
 
-    await message.answer(
-        f"Chosen preset is {chosen}\n\nThe debators are: {", ".join(presets[chosen]["agents"])}",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    # Treat text as a topic and ask to choose preset via inline buttons
+    await state.update_data(pending_topic=text)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=name, callback_data=f"select_preset:{name}")]
+        for name in presets.keys()
+    ])
+    await message.answer("Choose the preset", reply_markup=kb)
+
+
+@dp.callback_query(F.data.startswith("select_preset:"))
+async def on_preset_selected(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    preset = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    topic = data.get("pending_topic")
+    if not topic:
+        await callback.message.answer("Please send a topic first.")
+        return
+
+    await state.update_data(selected_preset=preset)
+    # Hide buttons from the selection message
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer(f"Starting debate on: {topic} (preset: {preset})")
+    await _start_debate(callback.message, topic, preset, state)
 
 
 async def main():
