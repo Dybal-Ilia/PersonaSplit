@@ -1,151 +1,151 @@
+import asyncio
+import inspect
 import os
-from typing import List, Optional, Sequence
-import math
+from typing import Iterable, List, Sequence
+
 from dotenv import load_dotenv
-from neo4j import GraphDatabase, basic_auth
-from sentence_transformers import SentenceTransformer
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.documents import Document
+from langchain_postgres import Column, PGEngine, PGVectorStore
+from langchain_postgres.v2.indexes import HNSWIndex
+
 from src.utils.logger import logger
 
 load_dotenv()
 
-
-NEO4J_URI = os.getenv("NEO4J_URI")
-AURA_INSTANCE_ID = os.getenv("AURA_INSTANCE_ID")
-NEO4J_USER = os.getenv("NEO4J_USER")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-EMBED_DIMS = int(os.getenv("EMBED_DIMS", "384"))
-
-if not NEO4J_URI:
-	if AURA_INSTANCE_ID:
-		NEO4J_URI = f"neo4j+s://{AURA_INSTANCE_ID}.databases.neo4j.io"
-	else:
-		NEO4J_URI = "bolt://localhost:7687"
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
+TABLE_NAME = os.getenv("TABLE_NAME", "memory")
+VECTOR_SIZE = int(os.getenv("VECTOR_SIZE", "384"))
+CONNECTION_STRING = (
+    f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
+    f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+)
 
 
-def _to_list(vec: Sequence[float]) -> List[float]:
-	return [float(x) for x in vec]
+class MemoryClient:
+    def __init__(self) -> None:
+        self._engine = PGEngine.from_connection_string(url=CONNECTION_STRING)
+        self._embedding = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+        self._vectorstore: PGVectorStore | None = None
+        self._init_lock = asyncio.Lock()
 
+    async def _ensure_vectorstore(self) -> None:
+        if self._vectorstore is not None:
+            return
 
-class Neo4jMemory:
-	def __init__(self):
-		self._driver = GraphDatabase.driver(
-			NEO4J_URI,
-			auth=basic_auth(NEO4J_USER or "neo4j", NEO4J_PASSWORD or "neo4j"),
-		)
-		self._model = SentenceTransformer(EMBED_MODEL)
-		try:
-			with self._driver.session() as s:
-				s.run("""
-				CREATE CONSTRAINT IF NOT EXISTS FOR (m:Memory) REQUIRE m.id IS UNIQUE
-				""")
-				try:
-					s.run(
-						"""
-						CREATE VECTOR INDEX memory_vec_idx IF NOT EXISTS
-						FOR (m:Memory) ON (m.embedding)
-						OPTIONS {
-						  indexConfig: {
-							`vector.dimensions`: $dims,
-							`vector.similarity_function`: 'cosine'
-						  }
-						}
-						""",
-						dims=EMBED_DIMS,
-					)
-				except Exception as e2:
-					logger.warning(f"Vector index DDL not applied (will fallback to client-side similarity): {e2}")
-		except Exception as e:
-			logger.warning(f"Neo4j schema init warning: {e}")
+        async with self._init_lock:
+            if self._vectorstore is not None:
+                return
 
-	def add(self, messages=None, user_id: Optional[str] = None, **kwargs):
-		if isinstance(messages, dict):
-			payload = messages
-			messages = payload.get("messages", [])
-			if user_id is None:
-				user_id = payload.get("user_id")
-		elif messages is None and kwargs:
-			payload = next(iter(kwargs.values())) if len(kwargs) == 1 and isinstance(next(iter(kwargs.values())), dict) else kwargs
-			if isinstance(payload, dict):
-				messages = payload.get("messages", messages)
-				if user_id is None:
-					user_id = payload.get("user_id", user_id)
+            try:
+                await self._engine.ainit_vectorstore_table(
+                    table_name=TABLE_NAME,
+                    vector_size=VECTOR_SIZE,
+                    metadata_columns=[
+                        Column("agent_name", "TEXT"),
+                        Column("session_id", "TEXT"),
+                    ],
+                )
+            except Exception as exc:
+                logger.debug(f"Vectorstore table init skipped: {exc}")
 
-		if not messages:
-			return
+            store_candidate = PGVectorStore.create(
+                engine=self._engine,
+                table_name=TABLE_NAME,
+                embedding_service=self._embedding,
+                metadata_columns=["agent_name", "session_id"],
+            )
+            store = await store_candidate if inspect.isawaitable(store_candidate) else store_candidate
 
-		if not isinstance(messages, list):
-			messages = [messages]
+            try:
+                index = HNSWIndex()
+                maybe_coro = store.apply_vector_index(index)
+                if inspect.isawaitable(maybe_coro):
+                    await maybe_coro
+            except Exception as exc:
+                # This catches the "relation already exists" error
+                if "already exists" in str(exc):
+                    logger.debug("Index already exists, skipping creation.")
+                else:
+                    logger.error(f"Error creating index: {exc}")
+                    # Optional: decide if you want to raise here or continue without the index
 
-		normalized = []
-		for m in messages:
-			if isinstance(m, str):
-				normalized.append({"role": "user", "content": m})
-			elif isinstance(m, dict):
-				normalized.append(m)
-		texts = [m.get("content", "") for m in normalized if m.get("content")]
-		for text in texts:
-			emb = self._model.encode(text)
-			with self._driver.session() as s:
-				s.run(
-					"""
-					MERGE (m:Memory {id: randomUUID()})
-					SET m.text = $text,
-						m.session_id = $session_id,
-						m.embedding = $embedding,
-						m.ts = timestamp()
-					""",
-					text=text,
-					session_id=user_id or "default",
-					embedding=_to_list(emb),
-				)
+            self._vectorstore = store
 
-	def search(self, query: str, user_id: Optional[str] = None, limit: int = 5, filters: Optional[dict] = None):
-		session_id = user_id or (filters or {}).get("user_id") or "default"
-		q_emb = _to_list(self._model.encode(query))
-		with self._driver.session() as s:
-			try:
-				result = s.run(
-					"""
-					CALL db.index.vector.queryNodes('memory_vec_idx', $limit, $q_emb)
-					YIELD node, score
-					WHERE node.session_id = $session_id
-					RETURN node.text AS text, score
-					ORDER BY score DESC
-					""",
-					limit=limit,
-					q_emb=q_emb,
-					session_id=session_id,
-				)
-				rows = result.data()
-				return [r["text"] for r in rows]
-			except Exception as e:
-				logger.warning(f"Vector index query failed, fallback to client-side similarity: {e}")
-				result = s.run(
-					"""
-					MATCH (m:Memory {session_id: $session_id})
-					RETURN m.text AS text, m.embedding AS emb
-					ORDER BY m.ts DESC
-					LIMIT $limit_fallback
-					""",
-					session_id=session_id,
-					limit_fallback=max(limit * 10, 50),
-				)
-				rows = result.data()
-		def cos_sim(a: List[float], b: List[float]) -> float:
-			num = sum(x*y for x, y in zip(a, b))
-			da = math.sqrt(sum(x*x for x in a))
-			db = math.sqrt(sum(y*y for y in b))
-			if da == 0 or db == 0:
-				return -1.0
-			return num / (da * db)
-		scored = []
-		for r in rows:
-			emb = r.get("emb")
-			if isinstance(emb, list) and emb:
-				scored.append((r["text"], cos_sim(q_emb, [float(x) for x in emb])))
-		scored.sort(key=lambda t: t[1], reverse=True)
-		return [t[0] for t in scored[:limit]]
+    async def add(
+        self,
+        documents: Sequence[Document] | Document,
+        *,
+        session_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> List[str]:
+        await self._ensure_vectorstore()
+        if self._vectorstore is None:
+            raise RuntimeError("Vectorstore not initialized")
 
+        if isinstance(documents, Document):
+            docs_list = [documents]
+        elif isinstance(documents, Iterable):
+            docs_list = list(documents)
+        else:
+            raise TypeError("documents must be a Document or iterable of Documents")
 
-memory_client = Neo4jMemory()
+        if not all(isinstance(doc, Document) for doc in docs_list):
+            raise TypeError("documents iterable must contain Document instances")
+
+        if not docs_list:
+            return []
+
+        for doc in docs_list:
+            metadata = dict(doc.metadata) if doc.metadata else {}
+            if session_id is not None:
+                metadata.setdefault("session_id", session_id)
+            if agent_name is not None:
+                metadata.setdefault("agent_name", agent_name)
+            doc.metadata = metadata
+
+        add_async = getattr(self._vectorstore, "aadd_documents", None)
+        if add_async is not None:
+            await add_async(docs_list)
+        else:
+            await asyncio.to_thread(self._vectorstore.add_documents, docs_list)
+        return [doc.page_content for doc in docs_list]
+
+    async def search(
+        self,
+        query: str,
+        *,
+        k: int = 5,
+        session_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> List[str]:
+        await self._ensure_vectorstore()
+        if self._vectorstore is None:
+            raise RuntimeError("Vectorstore not initialized")
+
+        filters = {}
+        if session_id is not None:
+            filters["session_id"] = session_id
+        if agent_name is not None:
+            filters["agent_name"] = agent_name
+        filter_arg = filters or None
+
+        search_async = getattr(self._vectorstore, "asimilarity_search", None)
+        if search_async is not None:
+            results = await search_async(query=query, k=k, filter=filter_arg)
+        else:
+            results = await asyncio.to_thread(
+                self._vectorstore.similarity_search,
+                query,
+                k,
+                filter_arg,
+            )
+        return [doc.page_content for doc in results]
+            
+memory_client = MemoryClient()
