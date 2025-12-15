@@ -16,7 +16,13 @@ from uuid import uuid4
 load_dotenv()
 
 BOT_TOKEN = getenv('BOT_TOKEN')
-PRESETS_PATH = getenv('PRESETS_PATH')
+PRESETS_PATH = getenv('PRESETS_PATH') or "/app/src/core/presets/presets.yaml"
+try:
+    from os.path import exists
+    if not exists(PRESETS_PATH):
+        PRESETS_PATH = "/app/src/core/presets/presets.yaml"
+except Exception:
+    PRESETS_PATH = "/app/src/core/presets/presets.yaml"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 presets = load_yaml(PRESETS_PATH)
@@ -24,12 +30,12 @@ presets = load_yaml(PRESETS_PATH)
 
 async def _start_debate(message: types.Message, topic: str, preset: str | None, state: FSMContext):
     user_data = await state.get_data()
-    chosen_preset = preset or user_data.get("selected_preset", "classic_preset")
+    chosen_preset = preset or user_data.get("selected_preset", "classic")
     try:
         agents_list = presets[chosen_preset]["agents"]
     except Exception:
         await message.answer("An error occurred. Preset is not found. Switching to 'classic'.")
-        chosen_preset = "classic_preset"
+        chosen_preset = "classic"
         agents_list = presets[chosen_preset]["agents"]
 
     graph = GraphFactory(agents_list=agents_list)
