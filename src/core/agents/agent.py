@@ -1,4 +1,5 @@
 from langchain_groq.chat_models import ChatGroq
+from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
@@ -9,7 +10,6 @@ from src.core.schemas.state import ChatState
 from src.core.memory_client import memory_client
 from abc import abstractmethod, ABC
 from httpx import HTTPStatusError
-import asyncio
 load_dotenv()
 
 prompts_path = os.getenv("PROMPTS_PATH")
@@ -38,10 +38,10 @@ class Persona(BaseAgent):
     async def run(self, state:ChatState):
         logger.info(f"{self.name} called to the debates")
         try:
-            memories = self.memory.search(
-                query=state.topic, 
-                user_id=state.session_id,
-                limit=5
+            memories = await self.memory.search(
+                query=state.topic,
+                session_id=state.session_id,
+                k=5,
             )
             context = "\\n".join(memories) or state.history_patch.content
         except Exception as e:
@@ -53,11 +53,14 @@ class Persona(BaseAgent):
             "context": context
         })
         logger.info(f"{self.name} generated a response")
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            memory_client.add,
-            {"messages":[{"role":"user","content":f"{self.name} says: {response.content}"}],
-             "user_id":state.session_id})
+        await self.memory.add(
+            Document(
+                page_content=f"{self.name} says: {response.content}",
+                metadata={"agent_name": self.name},
+            ),
+            session_id=state.session_id,
+            agent_name=self.name,
+        )
         response = AIMessage(f"{self.name} said: {response.content}")
         return {
             "history_patch": response,
@@ -73,10 +76,10 @@ class Orchestrator(BaseAgent):
             logger.warning(f"Turn limit ({state.replices_counter}) reached. Forcing FINISH.")
             return {"next_speaker": "judge"}
         try:
-            memories = self.memory.search(
-                query=state.topic, 
-                user_id=state.session_id,
-                limit=5
+            memories = await self.memory.search(
+                query=state.topic,
+                session_id=state.session_id,
+                k=5,
             )
             context = "\\n".join(memories) or state.history_patch.content
         except Exception as e:
@@ -110,10 +113,10 @@ class Judge(BaseAgent):
     async def run(self, state:ChatState):
         logger.info(f"{self.name} called to the debates")
         try:
-            memories = self.memory.search(
-                query=state.topic, 
-                user_id=state.session_id,
-                limit=20
+            memories = await self.memory.search(
+                query=state.topic,
+                session_id=state.session_id,
+                k=20,
             )
             context = "\\n".join(memories) or state.history_patch.content
         except Exception as e:
