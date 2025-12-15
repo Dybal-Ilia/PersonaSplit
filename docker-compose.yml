@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   bot:
     build: .
@@ -7,8 +6,35 @@ services:
       - .env
     environment:
       PROMPTS_PATH: /app/src/core/prompts/prompts.yaml
+      PRESETS_PATH: /app/src/core/presets/presets.yaml
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: personasplit
     restart: unless-stopped
     volumes:
       - hf_cache:/root/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: personasplit
+    ports:
+      - "6024:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   hf_cache:
+  postgres_data:
