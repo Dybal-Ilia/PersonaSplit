@@ -1,0 +1,23 @@
+scientific:
+  agents: [scientist, rationalist, lawyer, pragmatic]
+
+moral:
+  agents: [humanist, lawyer, philosopher, cynic]
+
+social:
+  agents: [populist, rationalist, cynic, pragmatic]
+
+future:
+  agents: [visionary, scientist, rationalist, cynic]
+
+eco:
+  agents: [ecologist, pragmatic, scientist, humanist]
+
+philosophical:
+  agents: [philosopher, humanist, cynic, artist]
+  
+creative:
+  agents: [artist, provocateur, rationalist, humanist]
+
+classic:
+  agents: [rationalist, humanist, pragmatic]
