@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import os
-from typing import Iterable, List, Sequence
+from collections.abc import Iterable, Sequence
 
 from dotenv import load_dotenv
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -61,7 +61,11 @@ class MemoryClient:
                 embedding_service=self._embedding,
                 metadata_columns=["agent_name", "session_id"],
             )
-            store = await store_candidate if inspect.isawaitable(store_candidate) else store_candidate
+            store = (
+                await store_candidate
+                if inspect.isawaitable(store_candidate)
+                else store_candidate
+            )
 
             try:
                 index = HNSWIndex()
@@ -84,7 +88,7 @@ class MemoryClient:
         *,
         session_id: str | None = None,
         agent_name: str | None = None,
-    ) -> List[str]:
+    ) -> list[str]:
         await self._ensure_vectorstore()
         if self._vectorstore is None:
             raise RuntimeError("Vectorstore not initialized")
@@ -124,7 +128,7 @@ class MemoryClient:
         k: int = 5,
         session_id: str | None = None,
         agent_name: str | None = None,
-    ) -> List[str]:
+    ) -> list[str]:
         await self._ensure_vectorstore()
         if self._vectorstore is None:
             raise RuntimeError("Vectorstore not initialized")
@@ -147,5 +151,6 @@ class MemoryClient:
                 filter_arg,
             )
         return [doc.page_content for doc in results]
-            
+
+
 memory_client = MemoryClient()
