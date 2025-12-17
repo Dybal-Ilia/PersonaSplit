@@ -11,7 +11,6 @@ from src.core.memory_client import memory_client
 from src.core.schemas.state import ChatState
 from src.utils.loaders import load_yaml
 from src.utils.logger import logger
-
 load_dotenv()
 
 prompts_path = os.getenv("PROMPTS_PATH")
