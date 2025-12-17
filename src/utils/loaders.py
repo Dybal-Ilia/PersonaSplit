@@ -1,9 +1,11 @@
-import yaml 
+import yaml
+
 from .logger import logger
 
-def load_yaml(path:str):
+
+def load_yaml(path: str):
     try:
-        with open(path, "r") as file:
+        with open(path) as file:
             content = yaml.safe_load(file)
             logger.info(f"Content loaded successfully from: {path}")
     except FileNotFoundError:
@@ -12,5 +14,5 @@ def load_yaml(path:str):
     except Exception as e:
         logger.error(f"An error occured while loading file: {str(e)}")
         exit()
-        
+
     return content
