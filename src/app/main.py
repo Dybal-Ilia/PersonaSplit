@@ -60,11 +60,7 @@ async def _start_debate(
     async for event in app.astream(initial_state, config={"recursion_limit": 100}):
         node_name, patch = list(event.items())[0]
         if node_name == "Orchestrator":
-            response_message = patch.get("next_speaker")
-            if response_message:
-                await message.answer(
-                    text=f"{response_message} is now to speak", parse_mode="Markdown"
-                )
+            continue
 
         if patch.get("history_patch"):
             await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
