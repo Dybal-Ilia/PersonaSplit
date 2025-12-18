@@ -7,7 +7,7 @@ class ChatState(BaseModel):
     debators: list[str]
     session_id: str
     history_patch: AIMessage = AIMessage(content="")
-    last_speaker: str = None
-    next_speaker: str = None
+    last_speaker: str = Field(default="")
+    next_speaker: str = Field(default="")
     judge_decision: AIMessage = AIMessage(content="")
     replices_counter: int = 0

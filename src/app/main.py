@@ -29,6 +29,9 @@ try:
         PRESETS_PATH = "/app/src/core/presets/presets.yaml"
 except Exception:
     PRESETS_PATH = "/app/src/core/presets/presets.yaml"
+
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is required")
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 presets = load_yaml(PRESETS_PATH)
@@ -82,6 +85,9 @@ async def _start_debate(
 @dp.message(Command("debate"))
 async def cmd_debate(message: types.Message, state: FSMContext):
     # Backward compatibility: /debate <topic>
+    if not message.text:
+        await message.answer("Usage: /debate <topic>")
+        return
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         await message.answer("Usage: /debate <topic>")
@@ -124,19 +130,25 @@ async def topic_or_other(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("select_preset:"))
 async def on_preset_selected(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not callback.data:
+        return
     preset = callback.data.split(":", 1)[1]
     data = await state.get_data()
     topic = data.get("pending_topic")
     if not topic:
-        await callback.message.answer("Please send a topic first.")
+        if callback.message:
+            await callback.message.answer("Please send a topic first.")
         return
 
     await state.update_data(selected_preset=preset)
+    msg = callback.message
+    if msg is None or not isinstance(msg, types.Message):
+        return
     # Hide buttons from the selection message
     with contextlib.suppress(Exception):
-        await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.message.answer(f"Starting debate on: {topic} (preset: {preset})")
-    await _start_debate(callback.message, topic, preset, state)
+        await msg.edit_reply_markup(reply_markup=None)
+    await msg.answer(f"Starting debate on: {topic} (preset: {preset})")
+    await _start_debate(msg, topic, preset, state)
 
 
 async def main():

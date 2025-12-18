@@ -1,7 +1,7 @@
 services:
   bot:
     build: .
-    image: personasplit-bot:latest
+    image: personasplit:latest
     env_file:
       - .env
     environment:

@@ -69,9 +69,7 @@ class MemoryClient:
 
             try:
                 index = HNSWIndex()
-                maybe_coro = store.apply_vector_index(index)
-                if inspect.isawaitable(maybe_coro):
-                    await maybe_coro
+                store.apply_vector_index(index)
             except Exception as exc:
                 # This catches the "relation already exists" error
                 if "already exists" in str(exc):
