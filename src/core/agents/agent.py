@@ -6,14 +6,16 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq.chat_models import ChatGroq
+from pydantic import SecretStr
 
 from src.core.memory_client import memory_client
 from src.core.schemas.state import ChatState
 from src.utils.loaders import load_yaml
 from src.utils.logger import logger
+
 load_dotenv()
 
-prompts_path = os.getenv("PROMPTS_PATH")
+prompts_path = os.getenv("PROMPTS_PATH") or ""
 API_KEY = os.getenv("GROQ_API_KEY")
 
 
@@ -23,7 +25,8 @@ class BaseAgent(ABC):
     ):
         self.name = name.strip().lower()
         self.memory = memory_client
-        self.llm = ChatGroq(model=model, api_key=API_KEY, max_tokens=max_tokens)
+        api_key = SecretStr(API_KEY) if API_KEY else None
+        self.llm = ChatGroq(model=model, api_key=api_key, max_tokens=max_tokens)
         self.prompt = ChatPromptTemplate.from_template(
             load_yaml(prompts_path)[self.name]["system_prompt"]
         )
@@ -95,7 +98,8 @@ class Orchestrator(BaseAgent):
             }
         )
         logger.info(f"{self.name} generated a response")
-        cleaned_response = response.content.strip().lower()
+        content = response.content if isinstance(response.content, str) else ""
+        cleaned_response = content.strip().lower()
         options = [
             debator for debator in state.debators if debator != state.last_speaker
         ]
