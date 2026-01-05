@@ -1,26 +1,30 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
 
 COPY pyproject.toml uv.lock ./
 
+RUN uv venv && \
+    uv pip install torch --index-url https://download.pytorch.org/whl/cpu && \
+    uv sync --frozen --no-install-project --no-dev
 
-RUN uv sync --frozen --no-install-project
+COPY src/ ./src/
+RUN uv sync --frozen --no-dev
 
+FROM python:3.12-slim
 
-COPY . .
+WORKDIR /app
 
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/src /app/src
 
-RUN uv sync --frozen
+ENV PATH="/app/.venv/bin:$PATH"
 
-CMD ["uv", "run", "python", "-m", "src.app.main"]
+CMD ["python", "-m", "src.app.main"]
