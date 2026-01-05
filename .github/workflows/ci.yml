@@ -36,6 +36,7 @@ jobs:
       - name: Run Ruff formatter check
         run: uv run ruff format --check src/
 
+      
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
