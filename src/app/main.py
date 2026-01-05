@@ -103,7 +103,6 @@ async def topic_or_other(message: types.Message, state: FSMContext):
 
     text = message.text.strip()
 
-    # If user typed a preset name (legacy reply keyboard), store and confirm
     if text in presets:
         await state.update_data(selected_preset=text)
         await message.answer(
@@ -112,7 +111,6 @@ async def topic_or_other(message: types.Message, state: FSMContext):
         )
         return
 
-    # Treat text as a topic and ask to choose preset via inline buttons
     await state.update_data(pending_topic=text)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -140,7 +138,6 @@ async def on_preset_selected(callback: types.CallbackQuery, state: FSMContext):
     msg = callback.message
     if msg is None or not isinstance(msg, types.Message):
         return
-    # Hide buttons from the selection message
     with contextlib.suppress(Exception):
         await msg.edit_reply_markup(reply_markup=None)
     await msg.answer(f"Starting debate on: {topic} (preset: {preset})")
