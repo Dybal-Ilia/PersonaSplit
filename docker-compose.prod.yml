@@ -1,6 +1,6 @@
 services:
   bot:
-    image: ghcr.io/Dybal-Ilia/personasplit:latest
+    image: ghcr.io/dybal-ilia/personasplit:latest
     env_file:
       - .env
     environment:
