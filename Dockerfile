@@ -1,26 +1,34 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy ONLY dependency files first (for better caching)
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies (this layer gets cached if deps don't change)
-RUN uv sync --frozen --no-install-project
+RUN uv venv && \
+    uv sync --frozen --no-install-project --no-dev
 
-# Copy the rest of the application
-COPY . .
+COPY src/ ./src/
+RUN uv sync --frozen --no-dev
 
-# Install the project itself
-RUN uv sync --frozen
+RUN . .venv/bin/activate && \
+    pip uninstall -y torch torchvision torchaudio nvidia-cublas-cu12 nvidia-cuda-cupti-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12 nvidia-nccl-cu12 nvidia-nvtx-cu12 nvidia-nvjitlink-cu12 triton 2>/dev/null || true && \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
+    rm -rf /root/.cache/pip
 
-CMD ["uv", "run", "python", "-m", "src.app.main"]
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/src /app/src
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+CMD ["python", "-m", "src.app.main"]

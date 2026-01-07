@@ -71,12 +71,10 @@ class MemoryClient:
                 index = HNSWIndex()
                 store.apply_vector_index(index)
             except Exception as exc:
-                # This catches the "relation already exists" error
                 if "already exists" in str(exc):
                     logger.debug("Index already exists, skipping creation.")
                 else:
                     logger.error(f"Error creating index: {exc}")
-                    # Optional: decide if you want to raise here or continue without the index
 
             self._vectorstore = store
 

@@ -122,7 +122,7 @@ class Judge(BaseAgent):
             memories = await self.memory.search(
                 query=state.topic,
                 session_id=state.session_id,
-                k=20,
+                k=10,
             )
             context = "\\n".join(memories) or state.history_patch.content
         except Exception as e:

@@ -23,8 +23,8 @@ rationalist:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
-    - Generate a short but very accurate and informative respons
+    - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -56,8 +56,8 @@ humanist:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
 
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -90,8 +90,8 @@ pragmatic:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -122,8 +122,8 @@ cynic:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -154,8 +154,8 @@ scientist:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -186,8 +186,8 @@ philosopher:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -218,8 +218,8 @@ populist:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -250,8 +250,8 @@ visionary:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -282,8 +282,8 @@ lawyer:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -314,8 +314,8 @@ ecologist:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -346,8 +346,8 @@ provocateur:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -378,8 +378,8 @@ artist:
     - You are given a brief overview of what has recently been said: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
     - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
     
     ### COMMUNICATION RULES (VERY IMPORTANT)
     1. **BE CONCISE.** This is a fast-paced debate. Your answers must be short and focused.
@@ -417,12 +417,10 @@ judge:
     1. Given the context you should carefully analyze it.
     2. Highlight the strongest arguments and explain why they can be fare and related to the topic most of all.
     3. Based on your thoughts generate a little summary.
-    4. Do not call user a "User", just give analysis.
-
 
     ### Input Context
     - General chat history: {context}
     
     ### Output Format
-    - Use plain text with no formatiing
-    - **You MUST complete your thought.** Do not end abruptly.
+    - Generate a short but very accurate and informative response
+    - Answer ONLY in user query language
